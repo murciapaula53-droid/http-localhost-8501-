@@ -1,31 +1,24 @@
-# CompeteTrack | Alquimia LF — v7 Inteligencia competitiva
+# CompeteTrack | Alquimia LF — v9 con datos iniciales
 
-## Objetivo
-Herramienta para observar la actividad digital pública de competidores: redes sociales, publicaciones, tono de comunicación, anuncios, noticias y métricas visibles.
+Esta versión incluye datos públicos iniciales para que el prototipo no abra con los CSV de competidores y perfiles completamente vacíos.
 
-## Módulos
-- **Buscador gratuito:** prepara consultas para encontrar empresas y fuentes públicas.
-- **Directorio:** conserva empresas, sitios, productos, cobertura y estado de validación.
-- **Redes sociales:** registra plataformas, publicaciones, temas, tono, objetivos, visualizaciones, alcance y engagement cuando esos datos están disponibles.
-- **Publicidad digital:** organiza anuncios observados, plataformas, formatos, mensajes, tono, objetivo, CTA, visualizaciones, alcance e interacciones. Permite ordenar anuncios por señales observables, sin afirmar que eso pruebe impacto causal o inversión.
-- **Noticias y medios:** registra menciones y publicaciones en prensa.
-- **Comparativos:** compara Alquimia LF con competidores seleccionados.
-- **Oportunidades:** identifica vacíos de información y líneas de producto compartidas.
+## Datos iniciales
+- Directorio de empresas candidatas con páginas corporativas públicas y líneas de producto descritas en sus sitios.
+- Algunos enlaces a perfiles sociales públicos enlazados desde el Linktree de CROA y el perfil corporativo de Andercol en LinkedIn.
+- Los registros sociales iniciales son perfiles corporativos, no publicaciones individuales ni métricas de desempeño.
 
-## Fuentes públicas recomendadas
-- Meta Ad Library: https://www.facebook.com/ads/library/
-- Google Ads Transparency Center: https://adstransparency.google.com/
-- Búsqueda web, Google Noticias, LinkedIn y páginas oficiales de cada empresa.
-- Canales oficiales de Instagram, Facebook, TikTok, LinkedIn y YouTube.
+## Fuentes consultadas
+- Alquimia LF: https://alquimialf.com/
+- CROA S.A.S.: https://www.croasas.com/ y https://linktr.ee/croasas
+- INSAPOL: https://insapol.com/
+- SMC Colombia: https://smccolombia.com/
+- QUIMI: https://www.quimi.com.co/
+- ESQUIM de Colombia: https://www.esquimcol.com/
+- Geos Química: https://www.geosquimica.com.co/
+- Andercol: https://andercol.com.co/ y https://co.linkedin.com/company/andercol-sas
 
-## Limitaciones importantes
-No se promete acceso automático a todas las redes ni a métricas privadas. Visualizaciones, alcance, gasto, segmentación y resultados pueden no ser públicos. Registra la URL y fecha de consulta y utiliza el estado del dato para distinguir información verificada, estimada o no disponible. El orden de anuncios destacados es una señal orientativa basada en datos introducidos, no una medición causal del impacto.
+## Limitaciones
+No se inventaron campañas publicitarias, noticias, visualizaciones ni engagement. Esos archivos permanecen vacíos hasta registrar datos reales con fuente y fecha. Los perfiles sociales enlazados deben revisarse antes de presentar y los seguidores son variables. La versión gratuita prepara búsquedas en fuentes públicas; no extrae automáticamente todo el contenido de las redes.
 
-## Instalación
-```bash
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
-```
-
-## Actualización en GitHub
-Sube y reemplaza `app.py` y `README.md` por los de esta versión. Conserva `requirements.txt` y los CSV existentes dentro de `data` para mantener tu directorio. Las columnas nuevas se rellenan vacías al leer archivos CSV anteriores; descarga una copia de tus datos antes de actualizar.
+## Actualizar en GitHub
+Extrae el ZIP y sube `app.py`, `README.md` y la carpeta `data` con los CSV iniciales. Si ya hay datos propios, haz una copia antes de reemplazar CSV. Conserva `requirements.txt`. Después espera a que Streamlit despliegue el commit.

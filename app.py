@@ -83,29 +83,14 @@ with st.sidebar:
     st.markdown("## ◈ CompeteTrack")
     st.caption("Inteligencia competitiva")
     st.divider()
-    page = st.radio("NAVEGACIÓN", ["Resumen","Buscador automático","Competidores","Redes sociales","Publicidad digital","Noticias y medios","Comparativos","Oportunidades"])
+    page = st.radio("NAVEGACIÓN", ["Buscador de competidores","Competidores","Redes sociales","Publicidad digital","Noticias y medios","Comparativos","Oportunidades"])
     st.divider()
     st.markdown("**MODO GRATUITO**")
     st.caption("Sin API externa. Las búsquedas se abren en fuentes públicas y puedes registrar los competidores que valides.")
 
-if page == "Resumen":
-    st.subheader("Centro de inteligencia competitiva")
-    st.markdown('<div class="ct-section">Busca empresas por producto o mercado, registra los competidores que encuentres y compara la información pública disponible.</div>', unsafe_allow_html=True)
-    a,b,c,d = st.columns(4)
-    a.metric("Competidores registrados", len(competitors))
-    b.metric("Registros sociales", len(social))
-    c.metric("Anuncios registrados", len(ads))
-    d.metric("Noticias registradas", len(news))
-    q = st.text_input("Buscar en el directorio", placeholder="Empresa, producto, ciudad o línea")
-    if q.strip():
-        mask = competitors.astype(str).apply(lambda col: col.str.contains(q, case=False, na=False)).any(axis=1)
-        st.dataframe(competitors[mask], use_container_width=True, hide_index=True)
-    st.dataframe(competitors[["empresa","ciudad_base","cobertura","tipo","prioridad","estado"]], use_container_width=True, hide_index=True)
-    st.caption("Los conteos muestran registros guardados, no la actividad total del mercado.")
-
-elif page == "Buscador automático":
-    st.subheader("Encontrar nuevos competidores")
-    st.markdown('<div class="ct-section">Escribe un producto, materia prima o categoría para preparar búsquedas en fuentes públicas. Valida cada empresa antes de incorporarla al directorio.</div>', unsafe_allow_html=True)
+if page == "Buscador de competidores":
+    st.subheader("Encuentra nuevos competidores")
+    st.markdown('<div class="ct-section">Escribe un producto, materia prima o categoría y el mercado que quieres investigar. CompeteTrack preparará búsquedas en fuentes públicas para encontrar empresas, revisar sus sitios y registrar las que compitan con Alquimia LF.</div>', unsafe_allow_html=True)
     with st.form("competitor_search_form"):
         product = st.text_input("Producto o categoría", placeholder="Ej. resinas de poliéster, siliconas para moldes")
         country = st.selectbox("Mercado", ["Colombia","Bogotá, Colombia","Medellín, Colombia","Cali, Colombia","Barranquilla, Colombia","Latinoamérica"])
