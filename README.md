@@ -1,39 +1,31 @@
-# CompeteTrack — Alquimia LF
+# CompeteTrack | Alquimia LF — versión gratuita sin API
 
-Prototipo de inteligencia competitiva en Python + Streamlit, sin Apify.
+Prototipo interactivo en Streamlit para organizar y analizar información pública de competidores.
 
-## Incluye
-- Dashboard inicial.
-- Lista precargada de 11 empresas candidatas, con segmentos, URLs y estado de validación.
-- Importación CSV/Excel y normalización de nombres frecuentes de columnas de comercio exterior.
-- Observatorio digital y menciones en medios mediante importación de archivos.
-- Comparativos básicos y exportación CSV/Excel.
-- Plantillas descargables.
+## Qué incluye
+- Resumen del directorio.
+- Buscador gratuito que prepara enlaces de búsqueda para Google, Bing, Google Noticias, LinkedIn y centros públicos de transparencia de anuncios.
+- Registro manual de competidores encontrados y guardado en CSV.
+- Directorio editable de empresas.
+- Módulos de redes sociales, publicidad digital, noticias, comparativos y oportunidades.
+- Importación de datos desde CSV/Excel en los módulos que la admiten.
 
-## Importante
-- Los competidores precargados son candidatos de investigación a partir de información pública, no un ranking de mercado.
-- La aplicación no se conecta directamente a Legiscomex; permite cargar reportes que el usuario esté autorizado a exportar.
-- No requiere ni utiliza Apify.
-- No obtiene automáticamente todos los anuncios ni métricas privadas de redes sociales.
-- Los valores, ventas o participación de mercado no deben inferirse si la fuente no los proporciona.
+## Importante sobre el modo sin API
+Esta versión no consulta automáticamente ni extrae todos los resultados de Google/Bing. Abre enlaces de búsqueda para que la persona revise las fuentes y registre los competidores pertinentes. Tampoco puede garantizar métricas completas de anuncios, seguidores o visualizaciones, ya que parte de esos datos no es pública o requiere herramientas específicas.
 
-## Instalación
-Requiere Python 3.10+.
+## Instalación local
+1. Instala Python 3.10 o superior.
+2. Descomprime el ZIP.
+3. Abre una terminal dentro de la carpeta del proyecto.
+4. Ejecuta:
 
 ```bash
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-pip install -r requirements.txt
-streamlit run app.py
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
-## Formatos recomendados
-Comercio exterior: `fecha, empresa, producto, subpartida, pais_origen, valor_usd, peso_neto_kg, fuente`
-Redes y pauta: `fecha_observacion, empresa, plataforma, tipo_contenido, url, reproducciones, interacciones, seguidores, fuente, notas`
-Medios: `fecha, empresa, medio, titular, url, tema, fuente`
+## Publicación
+Se puede subir el proyecto a GitHub y desplegarlo en Streamlit Community Cloud. Los archivos CSV locales pueden no persistir de forma permanente en algunos despliegues; descarga copias periódicas o conecta un almacenamiento persistente si se necesita conservar datos en la nube.
 
-La app intenta mapear algunos encabezados frecuentes a campos normalizados, pero se debe validar con la exportación real.
+## Uso responsable
+Verifica cada empresa y cada dato en su fuente original. Respeta las condiciones de uso de los sitios consultados y no interpretes candidatos encontrados como competidores confirmados.

@@ -1,274 +1,289 @@
-import io
-import os
-import re
-from datetime import date
-
-import pandas as pd
-import plotly.express as px
 import streamlit as st
+import pandas as pd
+from pathlib import Path
+import plotly.express as px
+from datetime import datetime
 
 st.set_page_config(page_title="CompeteTrack | Alquimia LF", page_icon="📊", layout="wide")
+DATA = Path("data")
+DATA.mkdir(exist_ok=True)
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-COMPETITORS_PATH = os.path.join(ROOT, "data", "competidores.csv")
-PINK = "#D783A3"
+COMP_COLS = ["empresa","sitio_web","ciudad_base","cobertura","tipo","prioridad","lineas","estado","fuente","notas"]
+SOCIAL_COLS = ["fecha","empresa","plataforma","tipo_contenido","url","seguidores","me_gusta","comentarios","compartidos","visualizaciones","engagement_pct","fuente","estado_dato","notas"]
+ADS_COLS = ["fecha_inicio","fecha_fin","empresa","plataforma","formato","mensaje","cta","url","estado_anuncio","fuente","estado_dato","notas"]
+NEWS_COLS = ["fecha","empresa","medio","titular","url","tema","fuente","estado_dato","notas"]
+SEARCH_COLS = ["fecha_busqueda","producto_busqueda","empresa","sitio_web","resumen","score_relevancia","ubicacion","lineas_detectadas","fuente","estado_validacion"]
+
+def load(path, cols):
+    if path.exists():
+        try:
+            df = pd.read_csv(path).fillna("")
+            for c in cols:
+                if c not in df.columns: df[c] = ""
+            return df[cols]
+        except Exception:
+            pass
+    return pd.DataFrame(columns=cols)
+
+def save(df, path):
+    df.to_csv(path, index=False, encoding="utf-8-sig")
+
+def num(s):
+    return pd.to_numeric(s, errors="coerce")
+
+def tokens(value):
+    return {x.strip().casefold() for x in str(value).replace(",", ";").split(";") if x.strip()}
+
+comp_path, social_path, ads_path, news_path, search_path = (
+    DATA/"competidores.csv", DATA/"redes_sociales.csv", DATA/"publicidad.csv",
+    DATA/"noticias.csv", DATA/"busquedas_competidores.csv"
+)
+competitors = load(comp_path, COMP_COLS)
+social = load(social_path, SOCIAL_COLS)
+ads = load(ads_path, ADS_COLS)
+news = load(news_path, NEWS_COLS)
+search_history = load(search_path, SEARCH_COLS)
 
 st.markdown("""
 <style>
-.block-container {padding-top: 1.35rem; padding-bottom: 2rem;}
-[data-testid="stMetric"] {background:#fff7fa; border:1px solid #f0dce4; padding:13px; border-radius:12px;}
-h1 {letter-spacing:-.03em;}
-.small-note {font-size:.88rem;color:#777;}
+.block-container {padding-top:1.25rem;padding-bottom:2rem;}
+h1,h2,h3 {color:#34313A;}
+div[data-testid="stMetric"] {background:#FFF4F8;border:1px solid #F0D9E3;padding:12px;border-radius:12px;}
 </style>
 """, unsafe_allow_html=True)
 
-def read_upload(file):
-    if file is None:
-        return None
-    name = file.name.lower()
-    if name.endswith(".csv"):
-        try:
-            file.seek(0)
-            return pd.read_csv(file)
-        except UnicodeDecodeError:
-            file.seek(0)
-            return pd.read_csv(file, encoding="latin-1")
-    file.seek(0)
-    return pd.read_excel(file)
-
-def csv_bytes(df):
-    return df.to_csv(index=False).encode("utf-8-sig")
-
-def xlsx_bytes(df, sheet="datos"):
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name=sheet[:31])
-    return buffer.getvalue()
-
-def clean_col(name):
-    s = str(name).strip().lower()
-    s = (s.replace("á","a").replace("é","e").replace("í","i")
-          .replace("ó","o").replace("ú","u").replace("ñ","n"))
-    s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
-    return s
-
-def normalize_trade_columns(df):
-    """Mapea nombres frecuentes de reportes; conserva columnas originales no reconocidas."""
-    out = df.copy()
-    out.columns = [clean_col(c) for c in out.columns]
-    aliases = {
-        "fecha": ["fecha", "fecha_declaracion", "fecha_embarque", "periodo", "mes"],
-        "empresa": ["empresa", "importador", "razon_social_importador", "nombre_importador",
-                    "exportador", "razon_social", "declarante"],
-        "producto": ["producto", "descripcion", "descripcion_arancelaria", "mercancia",
-                     "descripcion_producto", "nombre_producto"],
-        "subpartida": ["subpartida", "subpartida_arancelaria", "posicion_arancelaria",
-                       "codigo_arancelario", "hs_code", "partida"],
-        "pais_origen": ["pais_origen", "pais_de_origen", "origen", "pais_procedencia",
-                        "pais", "pais_exportador"],
-        "valor_usd": ["valor_usd", "fob_usd", "valor_fob_usd", "valor_fob", "cif_usd",
-                      "valor_cif_usd", "valor_cif", "valor_dolares", "valor_us"],
-        "peso_neto_kg": ["peso_neto_kg", "peso_neto", "kilos_netos", "kg_netos", "peso_kg",
-                         "cantidad_kg", "cantidad_neta"],
-        "fuente": ["fuente", "source", "origen_dato"]
-    }
-    rename = {}
-    for target, options in aliases.items():
-        if target in out.columns:
-            continue
-        for opt in options:
-            if opt in out.columns:
-                rename[opt] = target
-                break
-    out = out.rename(columns=rename)
-    return out
-
-TRADE_TEMPLATE = pd.DataFrame(columns=[
-    "fecha","empresa","producto","subpartida","pais_origen","valor_usd","peso_neto_kg","fuente"
-])
-SOCIAL_TEMPLATE = pd.DataFrame(columns=[
-    "fecha_observacion","empresa","plataforma","tipo_contenido","url","reproducciones",
-    "interacciones","seguidores","fuente","notas"
-])
-MEDIA_TEMPLATE = pd.DataFrame(columns=["fecha","empresa","medio","titular","url","tema","fuente"])
-
-if "competitors" not in st.session_state:
-    try:
-        st.session_state.competitors = pd.read_csv(COMPETITORS_PATH)
-    except Exception:
-        st.session_state.competitors = pd.DataFrame(columns=["empresa","sitio_web","lineas_coincidentes","segmento","prioridad","estado_validacion","fuente"])
-for key, default in [
-    ("trade_data", TRADE_TEMPLATE.copy()),
-    ("social_data", SOCIAL_TEMPLATE.copy()),
-    ("media_data", MEDIA_TEMPLATE.copy()),
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
+st.title("CompeteTrack")
+st.caption("Inteligencia competitiva interactiva para Alquimia LF · Colombia")
+st.info("Los resultados de búsqueda son empresas candidatas encontradas en la web. Revisa las fuentes y confirma ubicación, portafolio y relación competitiva antes de tomar decisiones.")
 
 with st.sidebar:
-    st.markdown("## CompeteTrack")
-    st.caption("Inteligencia competitiva · Alquimia LF")
-    page = st.radio("Navegación", [
-        "Inicio", "Competidores", "Inteligencia comercial",
-        "Redes y pauta", "Medios y noticias", "Comparativos", "Plantillas y exportación"
-    ])
+    st.markdown("## Menú")
+    page = st.radio("Módulo", ["Resumen","Buscador automático","Competidores","Redes sociales","Publicidad digital","Noticias y medios","Comparativos","Oportunidades"])
     st.divider()
-    st.caption("Versión inicial · Sin Apify")
-    st.caption("Los datos externos requieren fuentes autorizadas y fecha de consulta.")
+    st.markdown("**Modo gratuito**")
+    st.caption("Sin API key ni servicios de búsqueda pagos. El buscador abre consultas en fuentes públicas; tú eliges los resultados que deseas guardar.")
 
-st.title("CompeteTrack")
-st.caption("Monitoreo y análisis competitivo para Alquimia LF")
+if page == "Resumen":
+    st.subheader("Vista general")
+    a,b,c,d = st.columns(4)
+    a.metric("Competidores registrados", len(competitors))
+    b.metric("Registros sociales", len(social))
+    c.metric("Anuncios registrados", len(ads))
+    d.metric("Noticias registradas", len(news))
+    q = st.text_input("Buscar en el directorio", placeholder="Empresa, producto, ciudad o línea")
+    if q.strip():
+        mask = competitors.astype(str).apply(lambda col: col.str.contains(q, case=False, na=False)).any(axis=1)
+        st.dataframe(competitors[mask], use_container_width=True, hide_index=True)
+    st.dataframe(competitors[["empresa","ciudad_base","cobertura","tipo","prioridad","estado"]], use_container_width=True, hide_index=True)
+    st.caption("Los conteos muestran registros guardados, no la actividad total del mercado.")
 
-if page == "Inicio":
-    st.info("Las empresas y categorías precargadas son candidatos de investigación basados en información pública. No son un ranking confirmado de mercado. Carga datos verificables para calcular resultados.")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Empresas candidatas", len(st.session_state.competitors))
-    c2.metric("Registros comerciales", len(st.session_state.trade_data))
-    c3.metric("Observaciones digitales", len(st.session_state.social_data))
-    c4.metric("Menciones en medios", len(st.session_state.media_data))
-    st.subheader("Resumen de líneas competitivas")
-    if not st.session_state.competitors.empty and "segmento" in st.session_state.competitors:
-        counts = st.session_state.competitors["segmento"].fillna("Sin clasificar").value_counts().rename_axis("segmento").reset_index(name="empresas")
-        st.plotly_chart(px.bar(counts, x="segmento", y="empresas", title="Candidatos por segmento"), use_container_width=True)
-    st.subheader("Cómo alimentar el monitor")
-    st.markdown("""
-    1. **Competidores:** revisa empresas y confirma qué productos compiten con Alquimia.
-    2. **Inteligencia comercial:** carga CSV/Excel de Legiscomex si tu licencia permite exportarlos, o estadísticas oficiales.
-    3. **Redes y pauta:** importa observaciones públicas con URL, fecha y fuente.
-    4. **Medios y noticias:** registra titulares y enlaces verificables.
-    5. **Comparativos:** analiza solo las métricas que existan en los archivos cargados.
-    """)
+elif page == "Buscador automático":
+    st.subheader("Buscador gratuito de competidores")
+    st.write("Este modo no utiliza una API externa. Genera búsquedas listas para abrir en buscadores y fuentes públicas. Revisa cada resultado y agrega al directorio solo las empresas relevantes.")
+    with st.form("competitor_search_form"):
+        product = st.text_input("Producto o categoría", placeholder="Ej. resinas de poliéster, siliconas para moldes")
+        country = st.selectbox("Mercado", ["Colombia","Bogotá, Colombia","Medellín, Colombia","Cali, Colombia","Barranquilla, Colombia","Latinoamérica"])
+        submitted = st.form_submit_button("Generar búsquedas", type="primary")
+    if submitted:
+        if not product.strip():
+            st.warning("Escribe primero un producto o categoría.")
+        else:
+            import urllib.parse
+            term = product.strip()
+            market = country
+            q = urllib.parse.quote_plus(f"empresas proveedores fabricantes {term} {market}")
+            q_sites = urllib.parse.quote_plus(f"{term} {market} fabricantes proveedores empresas")
+            q_news = urllib.parse.quote_plus(f"{term} {market} industria noticias")
+            q_linkedin = urllib.parse.quote_plus(f"{term} {market}")
+            links = [
+                ("Google: empresas y proveedores", f"https://www.google.com/search?q={q}"),
+                ("Bing: empresas y proveedores", f"https://www.bing.com/search?q={q}"),
+                ("Google: páginas y catálogos", f"https://www.google.com/search?q={q_sites}+site%3A.com.co+OR+site%3A.com"),
+                ("Google Noticias: sector y empresas", f"https://news.google.com/search?q={q_news}"),
+                ("LinkedIn: empresas y perfiles", f"https://www.linkedin.com/search/results/companies/?keywords={q_linkedin}"),
+                ("Meta Ad Library: anuncios públicos", "https://www.facebook.com/ads/library/"),
+                ("Google Ads Transparency Center", "https://adstransparency.google.com/"),
+            ]
+            st.session_state["free_search_links"] = links
+            st.session_state["free_search_query"] = term
+            st.session_state["free_search_market"] = market
+            hist_row = pd.DataFrame([{
+                "fecha_busqueda":datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "producto_busqueda":term,
+                "empresa":"",
+                "sitio_web":"",
+                "resumen":f"Búsqueda preparada en modo gratuito para {market}",
+                "score_relevancia":"",
+                "ubicacion":market,
+                "lineas_detectadas":term,
+                "fuente":"Google/Bing/Google News/LinkedIn/centros de transparencia",
+                "estado_validacion":"Enlaces generados; resultados por revisar"
+            }], columns=SEARCH_COLS)
+            save(pd.concat([search_history, hist_row], ignore_index=True), search_path)
+            st.success("Listo. Abre los enlaces, revisa los resultados y registra los competidores que confirmes.")
+    if "free_search_links" in st.session_state:
+        st.markdown(f"### Búsquedas para: {st.session_state.get('free_search_query','')}")
+        st.caption(f"Mercado: {st.session_state.get('free_search_market','')}")
+        for label, url in st.session_state["free_search_links"]:
+            st.markdown(f"- [{label}]({url})")
+        st.divider()
+        st.markdown("### Registrar un competidor encontrado")
+        with st.form("add_candidate_free"):
+            candidate = st.text_input("Nombre de la empresa")
+            website = st.text_input("Sitio web")
+            city = st.text_input("Ciudad base (si la encuentras)")
+            lines = st.text_input("Productos o líneas relacionadas", value=st.session_state.get("free_search_query",""))
+            source = st.text_input("Enlace donde encontraste la empresa")
+            notes = st.text_area("Observaciones / evidencia")
+            add_candidate = st.form_submit_button("Guardar competidor")
+        if add_candidate:
+            if not candidate.strip():
+                st.warning("Ingresa el nombre de la empresa.")
+            else:
+                current = load(comp_path, COMP_COLS)
+                same = current["empresa"].astype(str).str.casefold().eq(candidate.strip().casefold()).any()
+                if same:
+                    st.warning("Esta empresa ya aparece en el directorio. Puedes editar su registro en el módulo Competidores.")
+                else:
+                    new = pd.DataFrame([{
+                        "empresa":candidate.strip(),"sitio_web":website.strip(),"ciudad_base":city.strip() or "Por validar",
+                        "cobertura":st.session_state.get("free_search_market","Por validar"),
+                        "tipo":"Candidato encontrado en fuente pública","prioridad":"Por evaluar",
+                        "lineas":lines.strip(),"estado":"Pendiente de validación",
+                        "fuente":source.strip() or "Búsqueda pública","notas":notes.strip()
+                    }], columns=COMP_COLS)
+                    save(pd.concat([current,new], ignore_index=True), comp_path)
+                    st.success(f"{candidate.strip()} se guardó en el directorio. Verifica sus datos antes de clasificarlo.")
+    if not search_history.empty:
+        with st.expander("Historial de búsquedas"):
+            st.dataframe(search_history, use_container_width=True, hide_index=True)
+            st.download_button("Descargar historial CSV", search_history.to_csv(index=False).encode("utf-8-sig"), "historial_busquedas.csv", "text/csv")
 
 elif page == "Competidores":
-    st.subheader("Empresas candidatas")
-    st.write("Edita esta lista para confirmar competidores directos. Las prioridades son preliminares y se deben validar por producto, cobertura y actualidad.")
-    edited = st.data_editor(st.session_state.competitors, num_rows="dynamic", use_container_width=True, key="competitors_editor")
-    st.session_state.competitors = edited
-    query = st.text_input("Buscar empresa o línea de producto")
-    if query:
-        mask = edited.astype(str).apply(lambda col: col.str.contains(query, case=False, na=False)).any(axis=1)
-        st.dataframe(edited[mask], use_container_width=True)
-    st.download_button("Exportar competidores CSV", csv_bytes(edited), "competidores_alquimia.csv", "text/csv")
-    st.download_button("Exportar competidores Excel", xlsx_bytes(edited, "competidores"), "competidores_alquimia.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.subheader("Directorio de competidores")
+    q = st.text_input("Buscar por empresa, producto, ciudad o estado")
+    view = competitors.copy()
+    if q.strip():
+        view = view[view.astype(str).apply(lambda col: col.str.contains(q, case=False, na=False)).any(axis=1)]
+    st.dataframe(view, use_container_width=True, hide_index=True)
+    st.markdown("### Editar / validar empresas")
+    edited = st.data_editor(competitors, num_rows="dynamic", use_container_width=True, key="competitor_editor")
+    if st.button("Guardar directorio"):
+        save(edited[COMP_COLS], comp_path)
+        st.success("Directorio guardado.")
+    st.download_button("Descargar directorio CSV", competitors.to_csv(index=False).encode("utf-8-sig"), "competidores_alquimia.csv", "text/csv")
 
-elif page == "Inteligencia comercial":
-    st.subheader("Datos comerciales integrados")
-    st.write("Carga reportes de comercio exterior exportados legalmente desde tus fuentes. La aplicación no presenta Legiscomex como módulo ni se conecta directamente a su sistema.")
-    st.caption("No se requiere Apify. La conexión directa a Legiscomex dependerá de que el proveedor habilite una API o integración para tu suscripción.")
-    st.download_button("Descargar plantilla Excel", xlsx_bytes(TRADE_TEMPLATE, "comercio_exterior"),
-                       "plantilla_comercio_exterior.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    upload = st.file_uploader("Cargar reporte CSV o Excel", type=["csv","xlsx","xls"], key="trade_upload")
-    if upload:
-        raw = read_upload(upload)
-        normalized = normalize_trade_columns(raw)
-        st.write("Vista previa normalizada")
-        st.dataframe(normalized.head(30), use_container_width=True)
-        st.caption("Verifica la correspondencia de columnas antes de utilizar los datos. Las columnas no reconocidas se conservan.")
-        if st.button("Guardar datos en esta sesión", type="primary"):
-            st.session_state.trade_data = normalized.copy()
-            st.success(f"{len(normalized):,} filas cargadas en la sesión.")
-    df = st.session_state.trade_data.copy()
-    if not df.empty:
-        st.subheader("Datos cargados")
-        st.dataframe(df, use_container_width=True)
-        if "valor_usd" in df:
-            values = pd.to_numeric(df["valor_usd"].astype(str).str.replace(",","",regex=False).str.replace("$","",regex=False), errors="coerce")
-            st.metric("Suma de valor comercial reportado (USD)", f"${values.sum():,.2f}" if values.notna().any() else "No disponible")
-        if "peso_neto_kg" in df:
-            kg = pd.to_numeric(df["peso_neto_kg"], errors="coerce")
-            st.metric("Suma de peso neto reportado (kg)", f"{kg.sum():,.2f}" if kg.notna().any() else "No disponible")
-        if "empresa" in df.columns and "valor_usd" in df.columns:
-            plot = df.copy()
-            plot["valor_usd"] = pd.to_numeric(plot["valor_usd"].astype(str).str.replace(",","",regex=False).str.replace("$","",regex=False), errors="coerce")
-            agg = plot.groupby("empresa", dropna=False)["valor_usd"].sum().reset_index().sort_values("valor_usd", ascending=False).head(20)
-            st.plotly_chart(px.bar(agg, x="empresa", y="valor_usd", title="Valor reportado por empresa (según archivo cargado)"), use_container_width=True)
-        st.download_button("Descargar datos normalizados CSV", csv_bytes(df), "datos_comerciales_normalizados.csv", "text/csv")
+elif page == "Redes sociales":
+    st.subheader("Análisis de redes sociales")
+    if social.empty:
+        st.info("Aún no hay métricas sociales cargadas. Este módulo permite analizar datos importados; la búsqueda web no proporciona automáticamente métricas privadas de todas las plataformas.")
     else:
-        st.info("Aún no hay datos. Descarga la plantilla o carga un reporte real.")
+        c1,c2 = st.columns(2)
+        companies = c1.multiselect("Empresas", sorted(social["empresa"].astype(str).unique()))
+        platforms = c2.multiselect("Plataformas", sorted(social["plataforma"].astype(str).unique()))
+        view = social.copy()
+        if companies: view = view[view["empresa"].isin(companies)]
+        if platforms: view = view[view["plataforma"].isin(platforms)]
+        st.dataframe(view, use_container_width=True, hide_index=True)
+        if num(view["visualizaciones"]).notna().any():
+            chart = view.assign(_v=num(view["visualizaciones"])).groupby("empresa",as_index=False)["_v"].sum()
+            st.plotly_chart(px.bar(chart,x="empresa",y="_v",title="Visualizaciones registradas"),use_container_width=True)
+    with st.expander("Importar datos de redes sociales"):
+        st.write("Columnas: " + ", ".join(SOCIAL_COLS))
+        st.download_button("Plantilla CSV", pd.DataFrame(columns=SOCIAL_COLS).to_csv(index=False).encode("utf-8-sig"), "plantilla_redes.csv", "text/csv")
+        up = st.file_uploader("Cargar CSV o Excel", type=["csv","xlsx"], key="social_upload")
+        if up:
+            incoming = pd.read_csv(up) if up.name.endswith(".csv") else pd.read_excel(up)
+            missing = [x for x in SOCIAL_COLS if x not in incoming.columns]
+            if missing: st.error("Faltan columnas: " + ", ".join(missing))
+            elif st.button("Guardar redes"):
+                save(pd.concat([social,incoming[SOCIAL_COLS]],ignore_index=True),social_path)
+                st.success("Registros guardados. Recarga la aplicación.")
 
-elif page == "Redes y pauta":
-    st.subheader("Observatorio de redes y publicidad")
-    st.write("Sin Apify: la primera versión admite registro manual o importación de observaciones desde fuentes públicas y autorizadas.")
-    st.caption("No se extraen automáticamente todas las campañas ni métricas privadas. Registra URL y fecha para que los hallazgos puedan verificarse.")
-    st.download_button("Descargar plantilla Excel", xlsx_bytes(SOCIAL_TEMPLATE, "observaciones_digitales"),
-                       "plantilla_redes_pauta.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    upload = st.file_uploader("Cargar observaciones CSV/Excel", type=["csv","xlsx","xls"], key="social_upload")
-    if upload:
-        df = read_upload(upload)
-        st.dataframe(df.head(30), use_container_width=True)
-        if st.button("Guardar observaciones en esta sesión", type="primary"):
-            st.session_state.social_data = df.copy()
-            st.success(f"{len(df):,} observaciones cargadas.")
-    df = st.session_state.social_data
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-        if "plataforma" in df:
-            counts = df["plataforma"].fillna("Sin dato").value_counts().rename_axis("plataforma").reset_index(name="observaciones")
-            st.plotly_chart(px.bar(counts, x="plataforma", y="observaciones", title="Observaciones por plataforma"), use_container_width=True)
-        st.download_button("Exportar observaciones CSV", csv_bytes(df), "observaciones_digitales.csv", "text/csv")
+elif page == "Publicidad digital":
+    st.subheader("Publicidad digital")
+    if ads.empty: st.info("Todavía no hay anuncios registrados. Puedes importar anuncios observados desde fuentes públicas.")
     else:
-        st.info("Sin observaciones cargadas todavía.")
+        companies = st.multiselect("Empresas", sorted(ads["empresa"].astype(str).unique()))
+        platforms = st.multiselect("Plataformas", sorted(ads["plataforma"].astype(str).unique()))
+        view = ads.copy()
+        if companies: view=view[view["empresa"].isin(companies)]
+        if platforms: view=view[view["plataforma"].isin(platforms)]
+        st.dataframe(view,use_container_width=True,hide_index=True)
+    with st.expander("Importar anuncios"):
+        st.write("Columnas: " + ", ".join(ADS_COLS))
+        st.download_button("Plantilla CSV",pd.DataFrame(columns=ADS_COLS).to_csv(index=False).encode("utf-8-sig"),"plantilla_publicidad.csv","text/csv")
+        up=st.file_uploader("Cargar CSV o Excel de anuncios",type=["csv","xlsx"],key="ads_upload")
+        if up:
+            incoming=pd.read_csv(up) if up.name.endswith(".csv") else pd.read_excel(up)
+            missing=[x for x in ADS_COLS if x not in incoming.columns]
+            if missing: st.error("Faltan columnas: "+", ".join(missing))
+            elif st.button("Guardar anuncios"):
+                save(pd.concat([ads,incoming[ADS_COLS]],ignore_index=True),ads_path); st.success("Anuncios guardados.")
 
-elif page == "Medios y noticias":
-    st.subheader("Cobertura en medios")
-    st.download_button("Descargar plantilla Excel", xlsx_bytes(MEDIA_TEMPLATE, "medios"),
-                       "plantilla_medios_noticias.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    upload = st.file_uploader("Cargar noticias/menciones CSV o Excel", type=["csv","xlsx","xls"], key="media_upload")
-    if upload:
-        df = read_upload(upload)
-        st.dataframe(df.head(30), use_container_width=True)
-        if st.button("Guardar menciones en esta sesión", type="primary"):
-            st.session_state.media_data = df.copy()
-            st.success(f"{len(df):,} menciones cargadas.")
-    df = st.session_state.media_data
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-        st.download_button("Exportar menciones CSV", csv_bytes(df), "menciones_medios.csv", "text/csv")
+elif page == "Noticias y medios":
+    st.subheader("Noticias y medios")
+    if news.empty: st.info("Todavía no hay noticias cargadas. Puedes importar menciones desde fuentes públicas.")
     else:
-        st.info("Sin menciones cargadas. Puedes registrar titulares, fecha, medio, empresa, URL y fuente.")
+        companies=st.multiselect("Empresas",sorted(news["empresa"].astype(str).unique()))
+        view=news[news["empresa"].isin(companies)] if companies else news
+        st.dataframe(view,use_container_width=True,hide_index=True)
+    with st.expander("Importar noticias"):
+        st.write("Columnas: "+", ".join(NEWS_COLS))
+        st.download_button("Plantilla CSV",pd.DataFrame(columns=NEWS_COLS).to_csv(index=False).encode("utf-8-sig"),"plantilla_noticias.csv","text/csv")
+        up=st.file_uploader("Cargar CSV o Excel de noticias",type=["csv","xlsx"],key="news_upload")
+        if up:
+            incoming=pd.read_csv(up) if up.name.endswith(".csv") else pd.read_excel(up)
+            missing=[x for x in NEWS_COLS if x not in incoming.columns]
+            if missing: st.error("Faltan columnas: "+", ".join(missing))
+            elif st.button("Guardar noticias"):
+                save(pd.concat([news,incoming[NEWS_COLS]],ignore_index=True),news_path); st.success("Noticias guardadas.")
 
 elif page == "Comparativos":
-    st.subheader("Comparativos con datos disponibles")
-    trade = st.session_state.trade_data.copy()
-    social = st.session_state.social_data.copy()
-    media = st.session_state.media_data.copy()
-    if not trade.empty and "empresa" in trade:
-        st.markdown("#### Comercio exterior")
-        st.dataframe(trade, use_container_width=True)
-    else:
-        st.info("Carga datos comerciales para habilitar comparaciones de comercio exterior.")
-    if not social.empty and "empresa" in social:
-        st.markdown("#### Actividad digital observada")
-        st.dataframe(social, use_container_width=True)
-    else:
-        st.info("Carga observaciones digitales para comparar empresas y plataformas.")
-    if not media.empty and "empresa" in media:
-        st.markdown("#### Menciones en medios")
-        st.dataframe(media, use_container_width=True)
-    st.warning("No se calculan participación de mercado, ventas ni inversión publicitaria estimada si las fuentes no proporcionan datos suficientes.")
+    st.subheader("Comparar Alquimia con la competencia")
+    names=competitors["empresa"].astype(str).tolist()
+    options=[x for x in names if x!="Alquimia LF"]
+    selected=st.multiselect("Selecciona competidores",options,default=options[:3])
+    chosen=["Alquimia LF"]+selected
+    view=competitors[competitors["empresa"].isin(chosen)]
+    st.markdown("#### Comparación de empresas")
+    st.dataframe(view[["empresa","ciudad_base","cobertura","tipo","prioridad","lineas","sitio_web","estado"]],use_container_width=True,hide_index=True)
+    matrix=[]
+    all_lines=sorted(set().union(*(tokens(x) for x in view["lineas"]))) if len(view) else []
+    for _,r in view.iterrows():
+        d={"Empresa":r["empresa"]}
+        for line in all_lines: d[line.title()]="Sí" if line in tokens(r["lineas"]) else "No registrado"
+        matrix.append(d)
+    if matrix:
+        st.markdown("#### Matriz de líneas de producto")
+        st.caption("La comparación usa descripciones textuales; «No registrado» no significa que no comercialice ese producto.")
+        st.dataframe(pd.DataFrame(matrix),use_container_width=True,hide_index=True)
+    rows=[]
+    for name in chosen:
+        sr=social[social["empresa"].astype(str)==name]
+        ar=ads[ads["empresa"].astype(str)==name]
+        nr=news[news["empresa"].astype(str)==name]
+        rows.append({"Empresa":name,"Publicaciones registradas":len(sr),"Plataformas":sr["plataforma"].nunique() if len(sr) else 0,"Anuncios registrados":len(ar),"Noticias registradas":len(nr),"Visualizaciones reportadas":num(sr["visualizaciones"]).sum(min_count=1) if len(sr) else None,"Engagement promedio (%)":num(sr["engagement_pct"]).mean() if len(sr) else None})
+    metrics=pd.DataFrame(rows)
+    st.markdown("#### Actividad digital registrada")
+    st.dataframe(metrics,use_container_width=True,hide_index=True)
+    st.download_button("Descargar comparativo CSV",metrics.to_csv(index=False).encode("utf-8-sig"),"comparativo_alquimia.csv","text/csv")
 
-elif page == "Plantillas y exportación":
-    st.subheader("Plantillas y exportación")
-    st.write("Descarga las plantillas para preparar tus datos sin cambiar los originales.")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.download_button("Plantilla comercio exterior", xlsx_bytes(TRADE_TEMPLATE), "plantilla_comercio_exterior.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.download_button("Plantilla redes y pauta", xlsx_bytes(SOCIAL_TEMPLATE), "plantilla_redes_pauta.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with c2:
-        st.download_button("Plantilla medios", xlsx_bytes(MEDIA_TEMPLATE), "plantilla_medios.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.download_button("Base de competidores", csv_bytes(st.session_state.competitors), "competidores_alquimia.csv", "text/csv")
-    st.subheader("Próximas mejoras")
-    st.markdown("""
-    - Adaptar el importador a las columnas exactas del archivo de Legiscomex.
-    - Conectar fuentes de noticias RSS/API autorizadas.
-    - Añadir filtros por fecha, producto, subpartida, país y empresa.
-    - Añadir informes PDF/Excel y alertas programadas.
-    - Integrar APIs oficiales de redes/publicidad si son compatibles con el alcance y los permisos.
-    """)
+elif page == "Oportunidades":
+    st.subheader("Oportunidades para Alquimia")
+    st.write("Las oportunidades son hipótesis de trabajo basadas en los datos disponibles y deben verificarse.")
+    if len(competitors):
+        tokens_list=[]
+        for _,r in competitors.iterrows():
+            for line in tokens(r["lineas"]): tokens_list.append({"Línea":line.title(),"Empresa":r["empresa"]})
+        if tokens_list:
+            counts=pd.DataFrame(tokens_list).groupby("Línea").agg(Empresas=("Empresa","nunique"),Competidores=("Empresa",lambda x:", ".join(sorted(set(x))))).reset_index()
+            st.dataframe(counts[counts["Empresas"]>1].sort_values("Empresas",ascending=False),use_container_width=True,hide_index=True)
+        observed=set(social["empresa"].astype(str))|set(ads["empresa"].astype(str))|set(news["empresa"].astype(str))
+        no_data=[x for x in competitors["empresa"].astype(str) if x not in observed and x!="Alquimia LF"]
+        st.write(f"Empresas sin registros sociales, anuncios o noticias: **{len(no_data)}**")
+        if no_data: st.caption(", ".join(no_data))
+        st.caption("Esto señala vacíos de información en la aplicación, no ausencia de actividad de las empresas.")
 
 st.divider()
-st.caption("CompeteTrack · Prototipo de trabajo. Verifica fuentes, fechas y permisos antes de tomar decisiones comerciales.")
+st.caption("CompeteTrack · Prototipo. La búsqueda automática usa Tavily; revisa las fuentes y valida cada candidato antes de considerarlo competidor.")
