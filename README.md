@@ -1,24 +1,31 @@
-# CompeteTrack | Alquimia LF — v9 con datos iniciales
+# CompeteTrack | Alquimia LF — v10 Centro de monitoreo
 
-Esta versión incluye datos públicos iniciales para que el prototipo no abra con los CSV de competidores y perfiles completamente vacíos.
+Aplicación Streamlit para benchmarking e inteligencia competitiva con Alquimia LF como empresa base.
 
-## Datos iniciales
-- Directorio de empresas candidatas con páginas corporativas públicas y líneas de producto descritas en sus sitios.
-- Algunos enlaces a perfiles sociales públicos enlazados desde el Linktree de CROA y el perfil corporativo de Andercol en LinkedIn.
-- Los registros sociales iniciales son perfiles corporativos, no publicaciones individuales ni métricas de desempeño.
+## Incluye
+- Centro de monitoreo como pantalla inicial: actividad registrada, indicadores y búsquedas rápidas de fuentes públicas.
+- Perfil de Alquimia LF con líneas de negocio, datos publicados en su web y enlaces sociales compartidos.
+- Directorio inicial de competidores candidatos con fuentes corporativas.
+- Módulos para redes/publicaciones, publicidad, noticias, comparativos y oportunidades.
+- CSV para registrar e importar hallazgos con fecha, fuente y estado de validación.
 
-## Fuentes consultadas
-- Alquimia LF: https://alquimialf.com/
-- CROA S.A.S.: https://www.croasas.com/ y https://linktr.ee/croasas
-- INSAPOL: https://insapol.com/
-- SMC Colombia: https://smccolombia.com/
-- QUIMI: https://www.quimi.com.co/
-- ESQUIM de Colombia: https://www.esquimcol.com/
-- Geos Química: https://www.geosquimica.com.co/
-- Andercol: https://andercol.com.co/ y https://co.linkedin.com/company/andercol-sas
+## Importante sobre el monitoreo
+Esta versión es gratuita y no usa API externa. Los enlaces a buscadores, Google News y bibliotecas de anuncios ayudan a investigar, pero no extraen automáticamente todos los resultados. No se inventan noticias, campañas, visualizaciones ni métricas. Los perfiles sociales precargados son perfiles, no publicaciones individuales.
 
-## Limitaciones
-No se inventaron campañas publicitarias, noticias, visualizaciones ni engagement. Esos archivos permanecen vacíos hasta registrar datos reales con fuente y fecha. Los perfiles sociales enlazados deben revisarse antes de presentar y los seguidores son variables. La versión gratuita prepara búsquedas en fuentes públicas; no extrae automáticamente todo el contenido de las redes.
+## Ejecutar localmente
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-## Actualizar en GitHub
-Extrae el ZIP y sube `app.py`, `README.md` y la carpeta `data` con los CSV iniciales. Si ya hay datos propios, haz una copia antes de reemplazar CSV. Conserva `requirements.txt`. Después espera a que Streamlit despliegue el commit.
+## Publicar en Streamlit Community Cloud
+Sube `app.py`, `README.md` y la carpeta `data` a tu repositorio. Conserva `requirements.txt`. En Streamlit, el archivo principal debe ser `app.py`.
+
+**Antes de reemplazar CSV en GitHub, descarga una copia de los que ya tengas si has añadido registros manuales.**
+
+
+## Monitoreo automático gratuito de noticias
+
+En el Centro de monitoreo o en Noticias y medios, usa el botón de búsqueda automática para consultar Google News RSS por cada empresa. No requiere Excel, API key ni servicio de pago. Los resultados se guardan en `data/noticias.csv` y se deduplican por URL.
+
+**Limitaciones:** RSS devuelve menciones web/noticias, no todas las publicaciones de redes sociales. Los resultados requieren revisión de relevancia; la aplicación no inventa métricas de alcance ni visualizaciones. Para redes y anuncios, abre las fuentes públicas enlazadas y solo registra métricas que estén realmente visibles o accesibles. El monitoreo de noticias es bajo demanda (al pulsar el botón), con caché de una hora; no es una alerta en tiempo real.

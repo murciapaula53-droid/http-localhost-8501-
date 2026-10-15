@@ -2,7 +2,10 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timezone
+import urllib.parse
+import requests
+import xml.etree.ElementTree as ET
 
 st.set_page_config(page_title="CompeteTrack | Alquimia LF", page_icon="📊", layout="wide")
 DATA = Path("data")
@@ -33,6 +36,33 @@ def num(s):
 
 def tokens(value):
     return {x.strip().casefold() for x in str(value).replace(",", ";").split(";") if x.strip()}
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_google_news(query, limit=30):
+    """Fetch public Google News RSS results; no API key required."""
+    url = "https://news.google.com/rss/search?q=" + urllib.parse.quote_plus(query) + "&hl=es-419&gl=CO&ceid=CO:es-419"
+    headers = {"User-Agent": "CompeteTrack/1.0 (public RSS reader)"}
+    response = requests.get(url, headers=headers, timeout=15)
+    response.raise_for_status()
+    root = ET.fromstring(response.content)
+    items = []
+    for item in root.findall("./channel/item")[:limit]:
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        pub = (item.findtext("pubDate") or "").strip()
+        source_node = item.find("source")
+        source = (source_node.text or "Google News") if source_node is not None else "Google News"
+        try:
+            from email.utils import parsedate_to_datetime
+            date = parsedate_to_datetime(pub).date().isoformat() if pub else datetime.now().date().isoformat()
+        except Exception:
+            date = datetime.now().date().isoformat()
+        if title and link:
+            items.append({"fecha": date, "empresa": "", "medio": source, "titular": title, "url": link,
+                          "tema": "Mención web detectada automáticamente", "fuente": "Google News RSS",
+                          "estado_dato": "Detectado automáticamente; revisar relevancia", "notas": "Resultado público RSS; confirmar que la mención corresponde a la empresa."})
+    return items
+
 
 comp_path, social_path, ads_path, news_path, search_path = (
     DATA/"competidores.csv", DATA/"redes_sociales.csv", DATA/"publicidad.csv",
@@ -83,10 +113,107 @@ with st.sidebar:
     st.markdown("## ◈ CompeteTrack")
     st.caption("Inteligencia competitiva")
     st.divider()
-    page = st.radio("NAVEGACIÓN", ["Buscador de competidores","Competidores","Redes sociales","Publicidad digital","Noticias y medios","Comparativos","Oportunidades"])
+    page = st.radio("NAVEGACIÓN", ["Centro de monitoreo", "Perfil de Alquimia", "Competidores", "Redes sociales", "Publicidad digital", "Noticias y medios", "Comparativos", "Oportunidades", "Buscador de competidores"])
     st.divider()
     st.markdown("**MODO GRATUITO**")
     st.caption("Sin API externa. Las búsquedas se abren en fuentes públicas y puedes registrar los competidores que valides.")
+
+if page == "Centro de monitoreo":
+    st.subheader("Centro de monitoreo competitivo")
+    st.markdown('<div class="ct-section">Seguimiento de competidores de Alquimia LF. Revisa fuentes públicas, registra evidencias y compara actividad observada. Las métricas solo se muestran cuando cuentan con datos registrados.</div>', unsafe_allow_html=True)
+    # Summary metrics
+    k1,k2,k3,k4 = st.columns(4)
+    k1.metric("Empresas en seguimiento", max(0, len(competitors)-1))
+    k2.metric("Perfiles sociales", len(social))
+    k3.metric("Anuncios registrados", len(ads))
+    k4.metric("Noticias registradas", len(news))
+    st.markdown("### Actualización automática desde fuentes web gratuitas")
+    st.caption("Consulta Google News RSS para encontrar menciones recientes de las empresas en seguimiento. No requiere Excel ni una API key. Los resultados se guardan al pulsar el botón y deben revisarse para descartar homónimos o menciones irrelevantes.")
+    if st.button("🔄 Buscar novedades de todos los competidores", type="primary", key="auto_news_all"):
+        fresh = []
+        tracked = competitors[competitors["empresa"].astype(str).str.strip().ne("")]
+        progress = st.progress(0, text="Consultando fuentes públicas…")
+        for idx, (_, cr) in enumerate(tracked.iterrows()):
+            cname = str(cr.get("empresa", "")).strip()
+            if not cname:
+                continue
+            query = f'"{cname}" (químicos OR resinas OR industria OR productos)'
+            try:
+                found = fetch_google_news(query, limit=12)
+                for item in found:
+                    item["empresa"] = cname
+                fresh.extend(found)
+            except Exception:
+                pass
+            progress.progress((idx + 1) / max(1, len(tracked)), text=f"Consultando: {cname}")
+        progress.empty()
+        if fresh:
+            new_df = pd.DataFrame(fresh, columns=NEWS_COLS)
+            existing_urls = set(news["url"].astype(str)) if not news.empty else set()
+            new_df = new_df[~new_df["url"].astype(str).isin(existing_urls)]
+            if not new_df.empty:
+                news = pd.concat([news, new_df], ignore_index=True).drop_duplicates(subset=["url"], keep="first")
+                save(news, news_path)
+                st.success(f"Se guardaron {len(new_df)} nuevas menciones públicas. Revisa su relevancia antes de usarlas en el análisis.")
+            else:
+                st.info("No se encontraron enlaces nuevos respecto a los ya registrados.")
+            st.dataframe(pd.DataFrame(fresh)[["fecha","empresa","medio","titular","url"]], use_container_width=True, hide_index=True)
+        else:
+            st.warning("No fue posible recuperar resultados en esta consulta. Puede ser una interrupción temporal de la fuente o de la conexión del servidor.")
+    st.markdown("### Actividad reciente registrada")
+    activity=[]
+    if not social.empty:
+        for _,r in social.iterrows():
+            if str(r.get("tipo_contenido", "")).lower().find("perfil corporativo") >= 0:
+                continue
+            activity.append({"Fecha":r.get("fecha",""),"Empresa":r.get("empresa",""),"Tipo":"Publicación social","Canal":r.get("plataforma",""),"Detalle":r.get("tema", ""),"Estado":r.get("estado_dato", ""),"Fuente":r.get("url", "")})
+    if not ads.empty:
+        for _,r in ads.iterrows(): activity.append({"Fecha":r.get("fecha_inicio",""),"Empresa":r.get("empresa",""),"Tipo":"Publicidad","Canal":r.get("plataforma",""),"Detalle":r.get("mensaje", ""),"Estado":r.get("estado_dato", ""),"Fuente":r.get("url", "")})
+    if not news.empty:
+        for _,r in news.iterrows(): activity.append({"Fecha":r.get("fecha",""),"Empresa":r.get("empresa",""),"Tipo":"Noticia","Canal":r.get("medio", ""),"Detalle":r.get("titular", ""),"Estado":r.get("estado_dato", ""),"Fuente":r.get("url", "")})
+    if activity:
+        act=pd.DataFrame(activity).sort_values("Fecha",ascending=False)
+        st.dataframe(act,use_container_width=True,hide_index=True)
+    else:
+        st.info("Aún no hay publicaciones individuales, anuncios ni noticias verificadas. Los perfiles y empresas iniciales sí están cargados. Usa las búsquedas de fuentes públicas de abajo para comenzar el monitoreo y registra solo hallazgos comprobables.")
+    st.markdown("### Búsquedas rápidas de inteligencia competitiva")
+    import urllib.parse
+    companies = [x for x in competitors["empresa"].astype(str).tolist() if x and x != "Alquimia LF"]
+    focus = st.selectbox("Empresa a investigar", companies, index=0 if companies else None, placeholder="Selecciona una empresa")
+    if focus:
+        row=competitors[competitors["empresa"].astype(str)==focus]
+        website=str(row.iloc[0]["sitio_web"]) if len(row) else ""
+        q=urllib.parse.quote_plus(f'"{focus}"')
+        qnews=urllib.parse.quote_plus(f'"{focus}" (resinas OR químicos OR industria)')
+        st.markdown(f"- [Buscar noticias recientes de {focus}](https://news.google.com/search?q={qnews})")
+        st.markdown(f"- [Buscar publicaciones y menciones web](https://www.google.com/search?q={q})")
+        st.markdown(f"- [Buscar perfiles en redes sociales](https://www.google.com/search?q={q}+Instagram+Facebook+LinkedIn+TikTok)")
+        st.markdown(f"- [Buscar anuncios en Meta Ad Library](https://www.facebook.com/ads/library/)")
+        st.markdown(f"- [Consultar anuncios en Google Ads Transparency Center](https://adstransparency.google.com/)")
+        if website and website.startswith("http"): st.markdown(f"- [Abrir sitio web oficial](<{website}>)")
+    st.caption("Modo gratuito: los enlaces abren fuentes públicas para consultar. No se afirma monitoreo automático ni se inventan publicaciones o métricas.")
+
+elif page == "Perfil de Alquimia":
+    st.subheader("Perfil de empresa base · Alquimia LF Chemicals")
+    st.markdown("### Insumos químicos industriales de alta calidad")
+    st.write("Alquimia LF se presenta como proveedor de insumos químicos industriales, con soluciones especializadas para moldes, resinas y limpieza industrial avanzada.")
+    a,b,c=st.columns(3)
+    a.metric("Ciudad publicada", "Bogotá")
+    b.metric("Líneas principales", "3")
+    c.metric("Perfiles sociales", "3")
+    st.markdown("#### Portafolio identificado en el sitio web")
+    portfolio=pd.DataFrame([
+        {"Línea": "Resinas de alta calidad", "Descripción": "Resinas para aplicaciones industriales exigentes", "Estado": "Identificado en la web"},
+        {"Línea": "Insumos para moldes", "Descripción": "Desmoldantes, selladores y productos para procesos de moldeo", "Estado": "Identificado en la web"},
+        {"Línea": "Limpieza industrial", "Descripción": "Soluciones para limpieza y mantenimiento de equipos", "Estado": "Identificado en la web"},
+        {"Línea": "Otros insumos químicos", "Descripción": "Bicarbonato de sodio, cloro, siliconas, alcohol industrial, desengrasantes, oxígeno activo y productos de aseo", "Estado": "Mencionado en la web; catálogo por validar"},
+    ])
+    st.dataframe(portfolio,use_container_width=True,hide_index=True)
+    st.markdown("#### Datos corporativos publicados")
+    st.markdown("- **Sitio web:** [alquimialf.com](https://alquimialf.com/)\n- **Dirección publicada:** Cra. 25 #67-86, Bogotá\n- **Teléfono publicado:** +57 311 666 9223\n- **Horario publicado:** 9:00 a. m. – 5:00 p. m.")
+    st.markdown("#### Redes sociales oficiales compartidas")
+    st.markdown("- [Instagram · @alquimiachemicals](https://instagram.com/alquimiachemicals)\n- [Facebook · Alquimia LF](https://www.facebook.com/share/1M7fodJNYA/)\n- [TikTok · @alquimialf](https://www.tiktok.com/@alquimialf)")
+    st.info("Este perfil funciona como referencia para el benchmarking. La comparación por producto específico requiere validar el catálogo detallado y las referencias comerciales.")
 
 if page == "Buscador de competidores":
     st.subheader("Encuentra nuevos competidores")
@@ -274,6 +401,29 @@ elif page == "Publicidad digital":
 
 elif page == "Noticias y medios":
     st.subheader("Noticias y medios")
+    st.markdown("Consulta menciones públicas sin cargar archivos. Los resultados se guardan automáticamente y se deduplican por enlace.")
+    selected_news_companies = st.multiselect("Empresas para consultar", competitors["empresa"].astype(str).tolist(), default=[x for x in competitors["empresa"].astype(str).tolist() if x and x != "Alquimia LF"][:5], key="auto_news_companies")
+    if st.button("Buscar noticias automáticamente", type="primary", key="auto_news_selected"):
+        found_all=[]
+        bar=st.progress(0, text="Buscando noticias públicas…")
+        for i, cname in enumerate(selected_news_companies):
+            try:
+                found=fetch_google_news(f'"{cname}" (químicos OR resinas OR industria OR productos)', limit=15)
+                for item in found: item["empresa"] = cname
+                found_all.extend(found)
+            except Exception:
+                pass
+            bar.progress((i+1)/max(1,len(selected_news_companies)), text=f"Consultando {cname}")
+        bar.empty()
+        if found_all:
+            incoming=pd.DataFrame(found_all, columns=NEWS_COLS)
+            seen=set(news["url"].astype(str)) if not news.empty else set()
+            incoming=incoming[~incoming["url"].astype(str).isin(seen)]
+            news=pd.concat([news,incoming],ignore_index=True).drop_duplicates(subset=["url"],keep="first")
+            save(news,news_path)
+            st.success(f"Consulta terminada. {len(incoming)} nuevas menciones guardadas.")
+        else:
+            st.warning("No se recuperaron resultados esta vez. Intenta de nuevo más tarde.")
     if news.empty: st.info("Todavía no hay noticias cargadas. Puedes importar menciones desde fuentes públicas.")
     else:
         companies=st.multiselect("Empresas",sorted(news["empresa"].astype(str).unique()))
